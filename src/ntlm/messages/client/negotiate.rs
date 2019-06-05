@@ -51,7 +51,7 @@ fn check_state(state: NtlmState) -> sspi::Result<()> {
 pub fn write_negotiate(context: &mut Ntlm, mut transport: impl io::Write) -> sspi::SspiResult {
     check_state(context.state)?;
 
-    let negotiate_flags = get_flags();
+    let negotiate_flags = get_flags(context.confidentiality, context.integrity);
     let message_fields = NegotiateMessageFields::new(NEGO_MESSAGE_OFFSET as u32);
 
     let mut buffer = Vec::with_capacity(message_fields.data_len());
@@ -71,23 +71,31 @@ pub fn write_negotiate(context: &mut Ntlm, mut transport: impl io::Write) -> ssp
     Ok(sspi::SspiOk::ContinueNeeded)
 }
 
-fn get_flags() -> NegotiateFlags {
-    // NTLMv2
-    NegotiateFlags::NTLM_SSP_NEGOTIATE56
+fn get_flags(confidentiality: bool, integrity: bool) -> NegotiateFlags {
+    let mut negotiate_flags =
+          NegotiateFlags::NTLM_SSP_NEGOTIATE56
         | NegotiateFlags::NTLM_SSP_NEGOTIATE_LM_KEY
         | NegotiateFlags::NTLM_SSP_NEGOTIATE_OEM
-    // ASC_REQ_CONFIDENTIALITY, ISC_REQ_CONFIDENTIALITY always set in the nla
-        | NegotiateFlags::NTLM_SSP_NEGOTIATE_SEAL
-    // other flags
         | NegotiateFlags::NTLM_SSP_NEGOTIATE_KEY_EXCH
         | NegotiateFlags::NTLM_SSP_NEGOTIATE128
         | NegotiateFlags::NTLM_SSP_NEGOTIATE_EXTENDED_SESSION_SECURITY
-        | NegotiateFlags::NTLM_SSP_NEGOTIATE_ALWAYS_SIGN
         | NegotiateFlags::NTLM_SSP_NEGOTIATE_NTLM
-        | NegotiateFlags::NTLM_SSP_NEGOTIATE_SIGN
         | NegotiateFlags::NTLM_SSP_NEGOTIATE_REQUEST_TARGET
         | NegotiateFlags::NTLM_SSP_NEGOTIATE_UNICODE
-        | NegotiateFlags::NTLM_SSP_NEGOTIATE_VERSION
+        | NegotiateFlags::NTLM_SSP_NEGOTIATE_VERSION;
+
+    if confidentiality {
+        // ASC_REQ_CONFIDENTIALITY, ISC_REQ_CONFIDENTIALITY
+        negotiate_flags |= NegotiateFlags::NTLM_SSP_NEGOTIATE_SEAL;
+    }
+
+    if integrity {
+        // ASC_REQ_INTEGRITY, ISC_REQ_INTEGRITY
+        negotiate_flags |= NegotiateFlags::NTLM_SSP_NEGOTIATE_SIGN;
+        negotiate_flags |= NegotiateFlags::NTLM_SSP_NEGOTIATE_ALWAYS_SIGN;
+    }
+
+    negotiate_flags
 }
 
 fn write_header(

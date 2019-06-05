@@ -49,6 +49,8 @@ pub struct Ntlm {
     flags: NegotiateFlags,
     identity: Option<CredentialsBuffers>,
     version: [u8; NTLM_VERSION_SIZE],
+    confidentiality: bool,
+    integrity: bool,
 
     send_single_host_data: bool,
 
@@ -94,6 +96,8 @@ impl Ntlm {
             flags: NegotiateFlags::empty(),
             identity: credentials.map(std::convert::Into::into),
             version: DEFAULT_NTLM_VERSION,
+            confidentiality: true,
+            integrity: true,
 
             send_single_host_data: false,
 
@@ -106,6 +110,14 @@ impl Ntlm {
 
     pub fn set_version(&mut self, version: [u8; NTLM_VERSION_SIZE]) {
         self.version = version;
+    }
+
+    pub fn set_confidentiality(&mut self, confidentiality: bool) {
+        self.confidentiality = confidentiality;
+    }
+
+    pub fn set_integrity(&mut self, integrity: bool) {
+        self.integrity = integrity;
     }
 }
 

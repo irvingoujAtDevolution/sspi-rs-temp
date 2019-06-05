@@ -124,7 +124,7 @@ pub fn write_authenticate(mut context: &mut Ntlm, mut transport: impl io::Write)
     let mut encrypted_session_key = [0x00; ENCRYPTED_RANDOM_SESSION_KEY_SIZE];
     encrypted_session_key.clone_from_slice(encrypted_session_key_vec.as_ref());
 
-    context.flags = get_flags(context.flags, identity);
+    context.flags = get_flags(context.flags, identity, context.confidentiality, context.integrity);
     let message_fields = AuthenticateMessageFields::new(
         identity,
         lm_challenge_response.as_ref(),
@@ -182,7 +182,8 @@ fn check_state(state: NtlmState) -> sspi::Result<()> {
     }
 }
 
-fn get_flags(negotiate_flags: NegotiateFlags, identity: &CredentialsBuffers) -> NegotiateFlags {
+fn get_flags(negotiate_flags: NegotiateFlags, identity: &CredentialsBuffers,
+             confidentiality: bool, integrity: bool) -> NegotiateFlags {
     // set KEY_EXCH flag if it was in the challenge message
     let mut negotiate_flags = negotiate_flags & NegotiateFlags::NTLM_SSP_NEGOTIATE_KEY_EXCH;
 
@@ -192,17 +193,22 @@ fn get_flags(negotiate_flags: NegotiateFlags, identity: &CredentialsBuffers) -> 
 
     // will not set workstation because it is not used anywhere
 
+    if confidentiality {
+        // ASC_REQ_CONFIDENTIALITY, ISC_REQ_CONFIDENTIALITY
+        negotiate_flags |= NegotiateFlags::NTLM_SSP_NEGOTIATE_SEAL;
+    }
+
+    if integrity {
+        // ASC_REQ_INTEGRITY, ISC_REQ_INTEGRITY
+        negotiate_flags |= NegotiateFlags::NTLM_SSP_NEGOTIATE_SIGN;
+        negotiate_flags |= NegotiateFlags::NTLM_SSP_NEGOTIATE_ALWAYS_SIGN;
+    }
+
     negotiate_flags
-    // NTLMv2
         | NegotiateFlags::NTLM_SSP_NEGOTIATE56
-    // ASC_REQ_CONFIDENTIALITY, ISC_REQ_CONFIDENTIALITY always set in the nla
-        | NegotiateFlags::NTLM_SSP_NEGOTIATE_SEAL
-    // other flags
         | NegotiateFlags::NTLM_SSP_NEGOTIATE128
         | NegotiateFlags::NTLM_SSP_NEGOTIATE_EXTENDED_SESSION_SECURITY
-        | NegotiateFlags::NTLM_SSP_NEGOTIATE_ALWAYS_SIGN
         | NegotiateFlags::NTLM_SSP_NEGOTIATE_NTLM
-        | NegotiateFlags::NTLM_SSP_NEGOTIATE_SIGN
         | NegotiateFlags::NTLM_SSP_NEGOTIATE_REQUEST_TARGET
         | NegotiateFlags::NTLM_SSP_NEGOTIATE_UNICODE
         | NegotiateFlags::NTLM_SSP_NEGOTIATE_TARGET_INFO
