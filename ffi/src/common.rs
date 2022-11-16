@@ -1,7 +1,7 @@
 use std::ptr::drop_in_place;
 use std::slice::from_raw_parts;
 
-use libc::{c_ulong, c_ulonglong, c_void};
+use libc::{c_ulong, c_void};
 use num_traits::cast::{FromPrimitive, ToPrimitive};
 use sspi::{
     AuthIdentityBuffers, DataRepresentation, DecryptionFlags, EncryptionFlags, ErrorKind, SecurityBuffer,
@@ -81,8 +81,8 @@ pub unsafe extern "system" fn AcceptSecurityContext(
 
         copy_to_c_sec_buffer((*p_output).p_buffers, &output_tokens);
 
-        (*ph_new_context).dw_lower = sspi_context_ptr as c_ulonglong;
-        (*ph_new_context).dw_upper = into_raw_ptr(security_package_name.to_owned()) as c_ulonglong;
+        (*ph_new_context).dw_lower = sspi_context_ptr as u64;
+        (*ph_new_context).dw_upper = into_raw_ptr(security_package_name.to_owned()) as u64;
 
         *pf_context_attr = f_context_req;
 

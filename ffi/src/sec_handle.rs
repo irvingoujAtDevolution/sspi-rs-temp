@@ -2,7 +2,7 @@ use std::ffi::CStr;
 use std::mem::size_of;
 use std::slice::from_raw_parts;
 
-use libc::{c_ulong, c_ulonglong, c_void};
+use libc::{c_ulong, c_void};
 use num_traits::{FromPrimitive, ToPrimitive};
 use sspi::builders::{ChangePasswordBuilder, EmptyInitializeSecurityContext};
 use sspi::internal::credssp::SspiContext;
@@ -46,8 +46,8 @@ const SECPKG_CRED_ATTR_KDC_URL: c_ulong = 501;
 
 #[repr(C)]
 pub struct SecHandle {
-    pub dw_lower: c_ulonglong,
-    pub dw_upper: c_ulonglong,
+    pub dw_lower: u64,
+    pub dw_upper: u64,
 }
 
 pub type PCredHandle = *mut SecHandle;
@@ -122,8 +122,8 @@ pub(crate) unsafe fn p_ctxt_handle_to_sspi_context(
             }
         };
 
-        (*(*context)).dw_lower = into_raw_ptr(sspi_context) as c_ulonglong;
-        (*(*context)).dw_upper = into_raw_ptr(name.to_owned()) as c_ulonglong;
+        (*(*context)).dw_lower = into_raw_ptr(sspi_context) as u64;
+        (*(*context)).dw_upper = into_raw_ptr(name.to_owned()) as u64;
     }
     Ok((*(*context)).dw_lower as *mut SspiContext)
 }
@@ -178,7 +178,7 @@ pub unsafe extern "system" fn AcquireCredentialsHandleA(
             credentials,
             security_package_name,
             attributes: CredentialsAttributes::new_with_package_list(package_list),
-        }) as c_ulonglong;
+        }) as u64;
 
         0
     )
@@ -244,7 +244,7 @@ pub unsafe extern "system" fn AcquireCredentialsHandleW(
             credentials,
             security_package_name,
             attributes: CredentialsAttributes::new_with_package_list(package_list),
-        }) as c_ulonglong;
+        }) as u64;
 
         0
     )
@@ -353,8 +353,8 @@ pub unsafe extern "system" fn InitializeSecurityContextA(
 
         copy_to_c_sec_buffer((*p_output).p_buffers, &output_tokens);
 
-        (*ph_new_context).dw_lower = sspi_context_ptr as c_ulonglong;
-        (*ph_new_context).dw_upper = into_raw_ptr(security_package_name.to_owned()) as c_ulonglong;
+        (*ph_new_context).dw_lower = sspi_context_ptr as u64;
+        (*ph_new_context).dw_upper = into_raw_ptr(security_package_name.to_owned()) as u64;
 
         *pf_context_attr = f_context_req;
 
@@ -450,8 +450,8 @@ pub unsafe extern "system" fn InitializeSecurityContextW(
 
         *pf_context_attr = f_context_req;
 
-        (*ph_new_context).dw_lower = sspi_context_ptr as c_ulonglong;
-        (*ph_new_context).dw_upper = into_raw_ptr(security_package_name.to_owned()) as c_ulonglong;
+        (*ph_new_context).dw_lower = sspi_context_ptr as u64;
+        (*ph_new_context).dw_upper = into_raw_ptr(security_package_name.to_owned()) as u64;
 
         result_status.map_or_else(
             |err| err.error_type.to_u32().unwrap(),
