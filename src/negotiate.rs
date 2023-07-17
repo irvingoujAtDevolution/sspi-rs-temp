@@ -12,7 +12,7 @@ use crate::utils::is_azure_ad_domain;
 use crate::KerberosConfig;
 use crate::{
     builders, kerberos, ntlm, pku2u, AcceptSecurityContextResult, AcquireCredentialsHandleResult, AuthIdentity,
-    AuthIdentityBuffers, CertTrustStatus, ContextNames, ContextSizes, CredentialUse, DecryptionFlags, Error, ErrorKind,
+    CertTrustStatus, ContextNames, ContextSizes, CredentialUse, DecryptionFlags, Error, ErrorKind,
     InitializeSecurityContextResult, Kerberos, Ntlm, PackageCapabilities, PackageInfo, Pku2u, Result, SecurityBuffer,
     SecurityPackageType, SecurityStatus, Sspi, SspiEx, SspiImpl, PACKAGE_ID_NONE, Credentials,
 };
@@ -396,9 +396,11 @@ impl SspiImpl for Negotiate {
                     return Err(Error::new(ErrorKind::NoCredentials, "Auth identity is not provided for the Pku2u"));
                 };
                 let new_builder = builder.full_transform(pku2u, Some(auth_identity));
-                pku2u.acquire_credentials_handle_impl(new_builder)?
+                pku2u.acquire_credentials_handle_impl(new_builder)?;
             },
-            NegotiatedProtocol::Kerberos(kerberos) => kerberos.acquire_credentials_handle_impl(builder)?,
+            NegotiatedProtocol::Kerberos(kerberos) => {
+                kerberos.acquire_credentials_handle_impl(builder)?;
+            },
             NegotiatedProtocol::Ntlm(ntlm) => {
                 let auth_identity = if let Some(Credentials::AuthIdentity(identity)) = builder.auth_data {
                     identity
@@ -406,7 +408,7 @@ impl SspiImpl for Negotiate {
                     return Err(Error::new(ErrorKind::NoCredentials, "Auth identity is not provided for the Pku2u"));
                 };
                 let new_builder = builder.full_transform(ntlm, Some(auth_identity));
-                ntlm.acquire_credentials_handle_impl(new_builder)?
+                ntlm.acquire_credentials_handle_impl(new_builder)?;
             },
         };
 
