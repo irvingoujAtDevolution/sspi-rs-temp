@@ -10,7 +10,7 @@ use winapi::{um::wincrypt::{
 
 use crate::{Result, Error, ErrorKind};
 
-unsafe fn find_cert_by_thumbprint(thumbprint: &[u8], cert_store: *mut c_void) -> Result<Certificate> {
+unsafe fn find_raw_cert_by_thumbprint(thumbprint: &[u8], cert_store: *mut c_void) -> Result<Vec<u8>> {
     let mut certificate = CertEnumCertificatesInStore(cert_store, null_mut());
 
     while !certificate.is_null() {
@@ -21,11 +21,11 @@ unsafe fn find_cert_by_thumbprint(thumbprint: &[u8], cert_store: *mut c_void) ->
         let cert_thumbprint = sha1.finalize().to_vec();
 
         if cert_thumbprint == thumbprint {
-            let cert: Certificate = picky_asn1_der::from_bytes(cert_der)?;
+            // let cert: Certificate = picky_asn1_der::from_bytes(cert_der)?;
 
-            CertFreeCertificateContext(certificate);
+            // CertFreeCertificateContext(certificate);
 
-            return Ok(cert);
+            return Ok(cert_der.to_vec());
         }
 
         let next_certificate = CertEnumCertificatesInStore(cert_store, certificate);
@@ -39,7 +39,7 @@ unsafe fn find_cert_by_thumbprint(thumbprint: &[u8], cert_store: *mut c_void) ->
     ))
 }
 
-pub unsafe fn extract_certificate_by_thumbprint(thumbprint: &[u8]) -> Result<Certificate> {
+unsafe fn open_user_cert_store() -> Result<*mut c_void> {
     // "My\0" encoded as a wide string.
     // More info: https://docs.microsoft.com/en-us/windows/win32/api/wincrypt/nf-wincrypt-certopenstore#remarks
     let my: [u16; 3] = [77, 121, 0];
@@ -58,7 +58,12 @@ pub unsafe fn extract_certificate_by_thumbprint(thumbprint: &[u8]) -> Result<Cer
         ));
     }
 
-    let cert = find_cert_by_thumbprint(thumbprint, cert_store)?;
+    Ok(cert_store)
+}
+
+pub unsafe fn extract_raw_certificate_by_thumbprint(thumbprint: &[u8]) -> Result<Vec<u8>> {
+    let cert_store = open_user_cert_store()?;
+    let cert = find_raw_cert_by_thumbprint(thumbprint, cert_store)?;
 
     CertCloseStore(cert_store, 0);
 
@@ -67,12 +72,12 @@ pub unsafe fn extract_certificate_by_thumbprint(thumbprint: &[u8]) -> Result<Cer
 
 #[cfg(test)]
 mod tests {
-    use super::extract_certificate_by_thumbprint;
+    use super::extract_raw_certificate_by_thumbprint;
 
     #[test]
     fn cert() {
         println!("cert here: {:?}", unsafe {
-            extract_certificate_by_thumbprint(&[60, 51, 235, 194, 72, 148, 15, 37, 176, 168, 245, 241, 146, 185, 12, 11, 235, 139, 141, 82]).unwrap()
+            extract_raw_certificate_by_thumbprint(&[60, 51, 235, 194, 72, 148, 15, 37, 176, 168, 245, 241, 146, 185, 12, 11, 235, 139, 141, 82]).unwrap()
         });
     }
 }

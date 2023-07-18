@@ -85,7 +85,7 @@ pub struct SmartCardIdentityBuffers {
     pub certificate: Vec<u8>,
     /// UTF-16 encoded smart card reader name
     pub reader_name: Vec<u8>,
-    /// Smart card PIN code
+    /// UTF-16 encoded smart card PIN code
     pub pin: Secret<Vec<u8>>,
 }
 
@@ -96,7 +96,7 @@ pub struct SmartCardIdentity {
     pub certificate: Certificate,
     /// Smart card reader name
     pub reader_name: String,
-    /// Smart card PIN code
+    /// ASCII encoded mart card PIN code
     pub pin: Secret<Vec<u8>>,
 }
 
@@ -119,7 +119,7 @@ impl TryFrom<SmartCardIdentityBuffers> for SmartCardIdentity {
         Ok(Self {
             certificate: picky_asn1_der::from_bytes(&value.certificate)?,
             reader_name: utils::bytes_to_utf16_string(&value.reader_name),
-            pin: value.pin.as_ref().clone().into(),
+            pin: utils::bytes_to_utf16_string(value.pin.as_ref()).into_bytes().into(),
         })
     }
 }

@@ -75,6 +75,8 @@ extern crate tracing;
 
 pub mod builders;
 pub mod channel_bindings;
+#[cfg(feature = "scard")]
+pub mod cert_utils;
 pub mod credssp;
 pub mod kerberos;
 pub mod negotiate;
@@ -115,7 +117,7 @@ use picky_krb::gss_api::GssApiMessageError;
 use picky_krb::messages::KrbError;
 use utils::map_keb_error_code_to_sspi_error;
 
-pub use self::auth_identity::{AuthIdentity, AuthIdentityBuffers, CredentialsBuffers, SmartCardIdentity, Credentials};
+pub use self::auth_identity::{AuthIdentity, AuthIdentityBuffers, CredentialsBuffers, SmartCardIdentity, Credentials, SmartCardIdentityBuffers};
 use self::builders::{
     AcceptSecurityContext, AcquireCredentialsHandle, ChangePassword, EmptyAcceptSecurityContext,
     EmptyAcquireCredentialsHandle, EmptyInitializeSecurityContext, FilledAcceptSecurityContext,
