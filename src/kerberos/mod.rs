@@ -105,6 +105,7 @@ pub struct Kerberos {
     realm: Option<String>,
     kdc_url: Option<Url>,
     channel_bindings: Option<ChannelBindings>,
+    // uses in the smart card logon. Otherwise, always None.
     dh_parameters: Option<DhParameters>,
 
     gss_api_messages: Vec<u8>,
@@ -188,7 +189,6 @@ impl Kerberos {
     pub fn as_exchange(
         &mut self,
         kdc_req_body: &KdcReqBody,
-        // mut pa_data_options: GenerateAsPaDataOptions,
         mut pa_data_options: AsReqPaDataOptions,
     ) -> Result<AsRep> {
         pa_data_options.with_pre_auth(false);
@@ -418,7 +418,7 @@ impl Sspi for Kerberos {
         };
         let kdc_req_body = generate_as_req_kdc_body(&options)?;
 
-        let pa_data_options  = AsReqPaDataOptions::PasswordBased(GenerateAsPaDataOptions {
+        let pa_data_options  = AsReqPaDataOptions::AuthIdentity(GenerateAsPaDataOptions {
             password: password.as_ref(),
             salt: salt.as_bytes().to_vec(),
             enc_params: self.encryption_params.clone(),
@@ -527,10 +527,7 @@ impl SspiImpl for Kerberos {
             ));
         }
 
-        self.auth_identity = match builder.auth_data.cloned() {
-            Some(auth_data) => Some(auth_data.try_into()?),
-            None => None,
-        };
+        self.auth_identity = builder.auth_data.cloned().map(|auth_data| auth_data.try_into()).transpose()?;
 
         Ok(AcquireCredentialsHandleResult {
             credentials_handle: self.auth_identity.clone(),
@@ -658,7 +655,7 @@ impl SspiImpl for Kerberos {
                         let domain = utf16_bytes_to_utf8_string(&auth_identity.domain);
                         let salt = format!("{}{}", domain, username);
 
-                        AsReqPaDataOptions::PasswordBased(GenerateAsPaDataOptions {
+                        AsReqPaDataOptions::AuthIdentity(GenerateAsPaDataOptions {
                             password: &password,
                             salt: salt.as_bytes().to_vec(),
                             enc_params: self.encryption_params.clone(),
@@ -671,18 +668,21 @@ impl SspiImpl for Kerberos {
 
                         self.dh_parameters = Some(generate_client_dh_parameters(&mut OsRng::default())?);
 
-                        AsReqPaDataOptions::PrivateKeyBased(pk_init::GenerateAsPaDataOptions {
+                        AsReqPaDataOptions::SmartCard(pk_init::GenerateAsPaDataOptions {
                             p2p_cert: picky_asn1_der::from_bytes(&smart_card.certificate)?,
                             kdc_req_body: &kdc_req_body,
                             dh_parameters: self.dh_parameters.clone().unwrap(),
                             sign_data: Box::new(move |data_to_sign| {
+                                // we need to calculate the sha1 hash by ourselves because a smart card can only calculate the resulting signature
                                 let mut sha1 = Sha1::new();
                                 sha1.update(data_to_sign);
                                 let hash = sha1.finalize().to_vec();
+
                                 let smart_card = SmartCard::new(pin.clone(), &reader_name)?;
                                 smart_card.sign(&hash)
                             }),
                             with_pre_auth: false,
+                            // for testing. the random value should be here
                             authenticator_nonce: [0x59, 0x58, 0x7a, 0xfc],
                         })
                     },
@@ -713,13 +713,13 @@ impl SspiImpl for Kerberos {
                 })?;
 
                 let mut session_key_extractor = match credentials {
-                    CredentialsBuffers::AuthIdentity(_) => AsRepSessionKeyExtractor::PasswordBased {
+                    CredentialsBuffers::AuthIdentity(_) => AsRepSessionKeyExtractor::AuthIdentity {
                         salt: &salt,
                         password: &password,
                         enc_params: &mut self.encryption_params
                     },
                     CredentialsBuffers::SmartCard(_) => {
-                        AsRepSessionKeyExtractor::PrivateKeyBased {
+                        AsRepSessionKeyExtractor::SmartCard {
                             dh_parameters: self.dh_parameters.as_mut().unwrap(),
                             enc_params: &mut self.encryption_params,
                         }

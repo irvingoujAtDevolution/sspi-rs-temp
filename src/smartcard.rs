@@ -31,7 +31,7 @@ impl SmartCard {
         let mut buff = vec![0_u8; readers_len];
         let mut names = context.list_readers(&mut buff)?;
         
-        let reader_name = names.find(|reader_name| reader_name.to_bytes() == scard_reader_name.as_bytes()).ok_or_else(|| Error::new(ErrorKind::InternalError, "Provided smart card reader does not exist.".to_owned()))?;
+        let reader_name = names.find(|reader_name| reader_name.to_bytes() == scard_reader_name.as_bytes()).ok_or_else(|| Error::new(ErrorKind::InternalError, "Provided smart card reader does not exist."))?;
 
         let scard = context.connect(reader_name, ShareMode::Shared, Protocols::T1)?;
 
@@ -63,7 +63,7 @@ impl SmartCard {
                     &mut result_buff,
                 )?;
                 if output != APDU_RESPONSE_OK {
-                    return Err(Error::new(ErrorKind::InternalError, format!("error: {:?} != {:?}", output, APDU_RESPONSE_OK)))
+                    return Err(Error::new(ErrorKind::InternalError, format!("Smart card error: {:?} != {:?}", output, APDU_RESPONSE_OK)))
                 }
 
                 let mut pin_apdu = vec![
@@ -80,7 +80,7 @@ impl SmartCard {
                 )?;
 
                 if output != APDU_RESPONSE_OK {
-                    return Err(Error::new(ErrorKind::InternalError, format!("error: {:?} != {:?}", output, APDU_RESPONSE_OK)))
+                    return Err(Error::new(ErrorKind::InternalError, format!("Smart card error: {:?} != {:?}", output, APDU_RESPONSE_OK)))
                 }
 
                 let output = scard.transmit(
@@ -95,7 +95,7 @@ impl SmartCard {
                     &mut result_buff,
                 )?;
                 if output != APDU_RESPONSE_OK {
-                    return Err(Error::new(ErrorKind::InternalError, format!("error: {:?} != {:?}", output, APDU_RESPONSE_OK)))
+                    return Err(Error::new(ErrorKind::InternalError, format!("Smart card error: {:?} != {:?}", output, APDU_RESPONSE_OK)))
                 }
 
                 let mut signature_buff = vec![0; 300];
@@ -106,7 +106,7 @@ impl SmartCard {
                 // the last two bytes is status bytes
                 let output_len = output.len();
                 if &output[output_len - 2..] != APDU_RESPONSE_OK {
-                    return Err(Error::new(ErrorKind::InternalError, format!("error: {:?} != {:?}", output, APDU_RESPONSE_OK)))
+                    return Err(Error::new(ErrorKind::InternalError, format!("Smart card error: {:?} != {:?}", output, APDU_RESPONSE_OK)))
                 }
 
                 // the last two bytes is status bytes
@@ -144,6 +144,7 @@ fn build_data_sign_apdu(data_to_sign: impl AsRef<[u8]>) -> Result<Vec<u8>> {
     sign_data_apdu.extend_from_slice(&encoded_data);
 
     // expected output length
+    // we don't know the resulting signature len so we set [0x00 0x00] here
     sign_data_apdu.extend_from_slice(&[0x00, 0x00]);
 
     Ok(sign_data_apdu)
@@ -177,7 +178,7 @@ mod tests {
         let context = Context::establish(Scope::User).unwrap();
         let readers_len = context.list_readers_len().unwrap();
         let mut buff = vec![0_u8; readers_len];
-        let mut names = context.list_readers(&mut buff).unwrap();
+        let names = context.list_readers(&mut buff).unwrap();
         for name in names {
             println!("{:?}", name);
         }

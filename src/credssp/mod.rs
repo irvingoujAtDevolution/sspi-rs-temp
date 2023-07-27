@@ -271,7 +271,7 @@ impl CredSspClient {
                 )];
                 let mut output_token = vec![SecurityBuffer::new(Vec::with_capacity(1024), SecurityBufferType::Token)];
 
-                let mut credentials_handle = self.credentials_handle.take().map(|c| CredentialsBuffers::AuthIdentity(c));
+                let mut credentials_handle = self.credentials_handle.take().map(CredentialsBuffers::AuthIdentity);
                 let cred_ssp_context = self.context.as_mut().unwrap();
                 let mut builder = EmptyInitializeSecurityContext::<<SspiContext as SspiImpl>::CredentialsHandle>::new()
                     .with_credentials_handle(&mut credentials_handle)
@@ -473,7 +473,7 @@ impl<C: CredentialsProxy<AuthenticationData = AuthIdentity>> CredSspServer<C> {
                 let input_token = SecurityBuffer::new(input, SecurityBufferType::Token);
                 let mut output_token = vec![SecurityBuffer::new(Vec::with_capacity(1024), SecurityBufferType::Token)];
 
-                let mut credentials_handle = self.credentials_handle.take().map(|a| CredentialsBuffers::AuthIdentity(a));
+                let mut credentials_handle = self.credentials_handle.take().map(CredentialsBuffers::AuthIdentity);
                 match try_cred_ssp_server!(
                     self.context
                         .as_mut()
@@ -604,9 +604,9 @@ impl SspiImpl for SspiContext {
                 let auth_identity = if let Some(Credentials::AuthIdentity(identity)) = builder.auth_data {
                     identity
                 } else {
-                    return Err(Error::new(ErrorKind::NoCredentials, "Auth identity is not provided for the Pku2u"));
+                    return Err(Error::new(ErrorKind::NoCredentials, "Auth identity is not provided for the Ntlm"));
                 };
-                builder.full_transform(ntlm, Some(auth_identity)).execute()?.transform(&|a: Option<AuthIdentityBuffers>| a.map(|c| CredentialsBuffers::AuthIdentity(c)))
+                builder.full_transform(ntlm, Some(auth_identity)).execute()?.transform(&|a: Option<AuthIdentityBuffers>| a.map(CredentialsBuffers::AuthIdentity))
             },
             SspiContext::Kerberos(kerberos) => builder.transform(kerberos).execute()?,
             SspiContext::Negotiate(negotiate) => builder.transform(negotiate).execute()?,
@@ -616,7 +616,7 @@ impl SspiImpl for SspiContext {
                 } else {
                     return Err(Error::new(ErrorKind::NoCredentials, "Auth identity is not provided for the Pku2u"));
                 };
-                builder.full_transform(pku2u, Some(auth_identity)).execute()?.transform(&|a: Option<AuthIdentityBuffers>| a.map(|c| CredentialsBuffers::AuthIdentity(c)))
+                builder.full_transform(pku2u, Some(auth_identity)).execute()?.transform(&|a: Option<AuthIdentityBuffers>| a.map(CredentialsBuffers::AuthIdentity))
             },
             #[cfg(feature = "tsssp")]
             SspiContext::CredSsp(credssp) => builder.transform(credssp).execute()?,
@@ -630,7 +630,7 @@ impl SspiImpl for SspiContext {
     ) -> crate::Result<InitializeSecurityContextResult> {
         match self {
             SspiContext::Ntlm(ntlm) => {
-                let mut auth_identity = if let Some(Some(CredentialsBuffers::AuthIdentity(ref identity))) = builder.credentials_handle_mut() {
+                let mut auth_identity = if let Some(Some(CredentialsBuffers::AuthIdentity(ref identity))) = builder.credentials_handle() {
                     Some(identity.clone())
                 }  else {
                     None
@@ -641,7 +641,7 @@ impl SspiImpl for SspiContext {
             SspiContext::Kerberos(kerberos) => kerberos.initialize_security_context_impl(builder),
             SspiContext::Negotiate(negotiate) => negotiate.initialize_security_context_impl(builder),
             SspiContext::Pku2u(pku2u) => {
-                let mut auth_identity = if let Some(Some(CredentialsBuffers::AuthIdentity(ref identity))) = builder.credentials_handle_mut() {
+                let mut auth_identity = if let Some(Some(CredentialsBuffers::AuthIdentity(ref identity))) = builder.credentials_handle() {
                     Some(identity.clone())
                 }  else {
                     None
@@ -664,7 +664,7 @@ impl SspiImpl for SspiContext {
                 let auth_identity = if let Some(Some(CredentialsBuffers::AuthIdentity(identity))) = builder.credentials_handle {
                     identity.clone()
                 } else {
-                    return Err(Error::new(ErrorKind::NoCredentials, "Auth identity is not provided for the Pku2u"));
+                    return Err(Error::new(ErrorKind::NoCredentials, "Auth identity is not provided for the Ntlm"));
                 };
                 builder.full_transform(ntlm, Some(&mut Some(auth_identity))).execute()
             },

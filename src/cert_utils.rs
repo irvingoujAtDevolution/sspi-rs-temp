@@ -1,6 +1,5 @@
 use std::{slice::from_raw_parts, ptr::null_mut};
 
-use picky_asn1_x509::Certificate;
 use sha1::{Sha1, Digest};
 use winapi::{um::wincrypt::{
     CertCloseStore, CertEnumCertificatesInStore, CertFreeCertificateContext, CertOpenStore,
@@ -21,9 +20,7 @@ unsafe fn find_raw_cert_by_thumbprint(thumbprint: &[u8], cert_store: *mut c_void
         let cert_thumbprint = sha1.finalize().to_vec();
 
         if cert_thumbprint == thumbprint {
-            // let cert: Certificate = picky_asn1_der::from_bytes(cert_der)?;
-
-            // CertFreeCertificateContext(certificate);
+            CertFreeCertificateContext(certificate);
 
             return Ok(cert_der.to_vec());
         }

@@ -383,10 +383,7 @@ impl SspiImpl for Negotiate {
             self.negotiate_protocol(&identity.username, identity.domain.as_deref().unwrap_or_default())?;
         }
 
-        self.auth_identity = match builder.auth_data.cloned() {
-            Some(auth_data) => Some(auth_data.try_into()?),
-            None => None,
-        };
+        self.auth_identity = builder.auth_data.cloned().map(|auth_data| auth_data.try_into()).transpose()?;
 
         match &mut self.protocol {
             NegotiatedProtocol::Pku2u(pku2u) => {
@@ -405,7 +402,7 @@ impl SspiImpl for Negotiate {
                 let auth_identity = if let Some(Credentials::AuthIdentity(identity)) = builder.auth_data {
                     identity
                 } else {
-                    return Err(Error::new(ErrorKind::NoCredentials, "Auth identity is not provided for the Pku2u"));
+                    return Err(Error::new(ErrorKind::NoCredentials, "Auth identity is not provided for the Ntlm"));
                 };
                 let new_builder = builder.full_transform(ntlm, Some(auth_identity));
                 new_builder.execute()?;

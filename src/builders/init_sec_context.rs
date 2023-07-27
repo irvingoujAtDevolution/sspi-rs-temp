@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, mem};
 
 use chrono::NaiveDateTime;
 
@@ -73,16 +73,18 @@ pub struct InitializeSecurityContext<
 }
 
 impl<
-        'b,
-        'a: 'b,
-        CredsHandle,
-        CredsHandleSet: ToAssign,
-        ContextRequirementsSet: ToAssign,
-        TargetDataRepresentationSet: ToAssign,
-        OutputSet: ToAssign,
-    > InitializeSecurityContext<
-        'a, CredsHandle, CredsHandleSet, ContextRequirementsSet, TargetDataRepresentationSet, OutputSet,
-    > {
+    'b,
+    'a: 'b,
+    CredsHandle,
+    CredsHandleSet: ToAssign,
+    ContextRequirementsSet: ToAssign,
+    TargetDataRepresentationSet: ToAssign,
+    OutputSet: ToAssign,
+> InitializeSecurityContext<
+    'a, CredsHandle, CredsHandleSet, ContextRequirementsSet, TargetDataRepresentationSet, OutputSet,
+> {
+    /// Creates a new builder with the other `AuthData` and `CredsHandle` types.
+    /// References to the input and output buffers will be moved to created builder leaving the None instead.
     pub fn full_transform<CredsHandle2, CredHandleSet2: ToAssign>(&mut self, credentials_handle: Option<&'b mut CredsHandle2>) -> InitializeSecurityContext<'b, CredsHandle2, CredHandleSet2, ContextRequirementsSet, TargetDataRepresentationSet, OutputSet> {
         InitializeSecurityContext {
             phantom_creds_use_set: PhantomData,
@@ -93,9 +95,9 @@ impl<
             credentials_handle,
             context_requirements: self.context_requirements,
             target_data_representation: self.target_data_representation,
-            output: std::mem::take(&mut self.output),
+            output: mem::take(&mut self.output),
             target_name: self.target_name.clone(),
-            input: std::mem::take(&mut self.input),
+            input: mem::take(&mut self.input),
         }
     }
 }
@@ -119,6 +121,10 @@ impl<
 {
     pub fn credentials_handle_mut(&mut self) -> &mut Option<&'a mut CredsHandle> {
         &mut self.credentials_handle
+    }
+
+    pub fn credentials_handle(&mut self) -> &Option<&'a mut CredsHandle> {
+        &self.credentials_handle
     }
 
     pub fn new() -> Self {
