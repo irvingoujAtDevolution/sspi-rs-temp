@@ -13,12 +13,11 @@ use super::ts_request::NONCE_SIZE;
 use super::{CredSspContext, CredSspMode, EndpointType, SspiContext, TsRequest};
 use crate::builders::EmptyInitializeSecurityContext;
 use crate::{
-    builders, negotiate, AcquireCredentialsHandleResult, CertContext,
-    CertEncodingType, CertTrustErrorStatus, CertTrustInfoStatus, CertTrustStatus, ClientRequestFlags,
-    ClientResponseFlags, ConnectionInfo, ContextNames, ContextSizes, CredentialUse, DataRepresentation,
-    DecryptionFlags, EncryptionFlags, Error, ErrorKind, InitializeSecurityContextResult, PackageCapabilities,
-    PackageInfo, Result, SecurityBuffer, SecurityBufferType, SecurityPackageType, SecurityStatus, Sspi, SspiEx,
-    SspiImpl, StreamSizes, PACKAGE_ID_NONE, Credentials, CredentialsBuffers,
+    builders, negotiate, AcquireCredentialsHandleResult, CertContext, CertEncodingType, CertTrustErrorStatus,
+    CertTrustInfoStatus, CertTrustStatus, ClientRequestFlags, ClientResponseFlags, ConnectionInfo, ContextNames,
+    ContextSizes, CredentialUse, Credentials, CredentialsBuffers, DataRepresentation, DecryptionFlags, EncryptionFlags,
+    Error, ErrorKind, InitializeSecurityContextResult, PackageCapabilities, PackageInfo, Result, SecurityBuffer,
+    SecurityBufferType, SecurityPackageType, SecurityStatus, Sspi, SspiEx, SspiImpl, StreamSizes, PACKAGE_ID_NONE,
 };
 
 pub const PKG_NAME: &str = "CREDSSP";
@@ -283,7 +282,11 @@ impl SspiImpl for SspiCredSsp {
             ));
         }
 
-        self.auth_identity = builder.auth_data.cloned().map(|auth_data| auth_data.try_into()).transpose()?;
+        self.auth_identity = builder
+            .auth_data
+            .cloned()
+            .map(|auth_data| auth_data.try_into())
+            .transpose()?;
 
         Ok(AcquireCredentialsHandleResult {
             credentials_handle: self.auth_identity.clone(),
@@ -427,10 +430,11 @@ impl SspiImpl for SspiCredSsp {
                     .and_then(|c| c.as_ref())
                     .ok_or_else(|| Error::new(ErrorKind::WrongCredentialHandle, "credentials handle is not present"))?;
 
-                ts_request.auth_info = Some(
-                    self.cred_ssp_context
-                        .encrypt_ts_credentials(credentials.as_auth_identity().unwrap(), CredSspMode::WithCredentials)?,
-                );
+                ts_request.auth_info =
+                    Some(self.cred_ssp_context.encrypt_ts_credentials(
+                        credentials.as_auth_identity().unwrap(),
+                        CredSspMode::WithCredentials,
+                    )?);
 
                 let mut encoded_ts_request = Vec::new();
                 ts_request.encode_ts_request(&mut encoded_ts_request)?;

@@ -1,20 +1,21 @@
-use std::{slice::from_raw_parts, ptr::null_mut};
+use std::ptr::null_mut;
+use std::slice::from_raw_parts;
 
-use sha1::{Sha1, Digest};
-use winapi::{um::wincrypt::{
-    CertCloseStore, CertEnumCertificatesInStore, CertFreeCertificateContext, CertOpenStore,
-    CERT_STORE_PROV_SYSTEM_W, CERT_SYSTEM_STORE_CURRENT_USER_ID,
-    CERT_SYSTEM_STORE_LOCATION_SHIFT,
-}, ctypes::c_void};
+use sha1::{Digest, Sha1};
+use winapi::ctypes::c_void;
+use winapi::um::wincrypt::{
+    CertCloseStore, CertEnumCertificatesInStore, CertFreeCertificateContext, CertOpenStore, CERT_STORE_PROV_SYSTEM_W,
+    CERT_SYSTEM_STORE_CURRENT_USER_ID, CERT_SYSTEM_STORE_LOCATION_SHIFT,
+};
 
-use crate::{Result, Error, ErrorKind};
+use crate::{Error, ErrorKind, Result};
 
 unsafe fn find_raw_cert_by_thumbprint(thumbprint: &[u8], cert_store: *mut c_void) -> Result<Vec<u8>> {
     let mut certificate = CertEnumCertificatesInStore(cert_store, null_mut());
 
     while !certificate.is_null() {
         let cert_der = from_raw_parts((*certificate).pbCertEncoded, (*certificate).cbCertEncoded as usize);
-        
+
         let mut sha1 = Sha1::new();
         sha1.update(cert_der);
         let cert_thumbprint = sha1.finalize().to_vec();
@@ -74,7 +75,10 @@ mod tests {
     #[test]
     fn cert() {
         println!("cert here: {:?}", unsafe {
-            extract_raw_certificate_by_thumbprint(&[60, 51, 235, 194, 72, 148, 15, 37, 176, 168, 245, 241, 146, 185, 12, 11, 235, 139, 141, 82]).unwrap()
+            extract_raw_certificate_by_thumbprint(&[
+                60, 51, 235, 194, 72, 148, 15, 37, 176, 168, 245, 241, 146, 185, 12, 11, 235, 139, 141, 82,
+            ])
+            .unwrap()
         });
     }
 }

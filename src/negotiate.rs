@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use lazy_static::lazy_static;
 
-use crate::{kdc::detect_kdc_url, CredentialsBuffers};
+use crate::kdc::detect_kdc_url;
 use crate::kerberos::client::generators::get_client_principal_realm;
 use crate::network_client::NetworkClientFactory;
 use crate::ntlm::NtlmConfig;
@@ -12,9 +12,9 @@ use crate::utils::is_azure_ad_domain;
 use crate::KerberosConfig;
 use crate::{
     builders, kerberos, ntlm, pku2u, AcceptSecurityContextResult, AcquireCredentialsHandleResult, AuthIdentity,
-    CertTrustStatus, ContextNames, ContextSizes, CredentialUse, DecryptionFlags, Error, ErrorKind,
-    InitializeSecurityContextResult, Kerberos, Ntlm, PackageCapabilities, PackageInfo, Pku2u, Result, SecurityBuffer,
-    SecurityPackageType, SecurityStatus, Sspi, SspiEx, SspiImpl, PACKAGE_ID_NONE, Credentials,
+    CertTrustStatus, ContextNames, ContextSizes, CredentialUse, Credentials, CredentialsBuffers, DecryptionFlags,
+    Error, ErrorKind, InitializeSecurityContextResult, Kerberos, Ntlm, PackageCapabilities, PackageInfo, Pku2u, Result,
+    SecurityBuffer, SecurityPackageType, SecurityStatus, Sspi, SspiEx, SspiImpl, PACKAGE_ID_NONE,
 };
 
 pub const PKG_NAME: &str = "Negotiate";
@@ -268,9 +268,7 @@ impl SspiEx for Negotiate {
         self.auth_identity = Some(identity.clone().try_into().unwrap());
 
         match &mut self.protocol {
-            NegotiatedProtocol::Pku2u(pku2u) => {
-                pku2u.custom_set_auth_identity(identity.auth_identity().unwrap())
-            },
+            NegotiatedProtocol::Pku2u(pku2u) => pku2u.custom_set_auth_identity(identity.auth_identity().unwrap()),
             NegotiatedProtocol::Kerberos(kerberos) => kerberos.custom_set_auth_identity(identity),
             NegotiatedProtocol::Ntlm(ntlm) => ntlm.custom_set_auth_identity(identity.auth_identity().unwrap()),
         }
@@ -383,30 +381,40 @@ impl SspiImpl for Negotiate {
             self.negotiate_protocol(&identity.username, identity.domain.as_deref().unwrap_or_default())?;
         }
 
-        self.auth_identity = builder.auth_data.cloned().map(|auth_data| auth_data.try_into()).transpose()?;
+        self.auth_identity = builder
+            .auth_data
+            .cloned()
+            .map(|auth_data| auth_data.try_into())
+            .transpose()?;
 
         match &mut self.protocol {
             NegotiatedProtocol::Pku2u(pku2u) => {
                 let auth_identity = if let Some(Credentials::AuthIdentity(identity)) = builder.auth_data {
                     identity
                 } else {
-                    return Err(Error::new(ErrorKind::NoCredentials, "Auth identity is not provided for the Pku2u"));
+                    return Err(Error::new(
+                        ErrorKind::NoCredentials,
+                        "Auth identity is not provided for the Pku2u",
+                    ));
                 };
                 let new_builder = builder.full_transform(pku2u, Some(auth_identity));
                 new_builder.execute()?;
-            },
+            }
             NegotiatedProtocol::Kerberos(kerberos) => {
                 kerberos.acquire_credentials_handle_impl(builder)?;
-            },
+            }
             NegotiatedProtocol::Ntlm(ntlm) => {
                 let auth_identity = if let Some(Credentials::AuthIdentity(identity)) = builder.auth_data {
                     identity
                 } else {
-                    return Err(Error::new(ErrorKind::NoCredentials, "Auth identity is not provided for the Ntlm"));
+                    return Err(Error::new(
+                        ErrorKind::NoCredentials,
+                        "Auth identity is not provided for the Ntlm",
+                    ));
                 };
                 let new_builder = builder.full_transform(ntlm, Some(auth_identity));
                 new_builder.execute()?;
-            },
+            }
         };
 
         Ok(AcquireCredentialsHandleResult {
@@ -444,8 +452,10 @@ impl SspiImpl for Negotiate {
                         .clone()
                         .map(NtlmConfig::new)
                         .unwrap_or_default();
-                    self.protocol =
-                        NegotiatedProtocol::Ntlm(Ntlm::with_auth_identity(self.auth_identity.clone().map(|c| c.auth_identity()).flatten(), ntlm_config));
+                    self.protocol = NegotiatedProtocol::Ntlm(Ntlm::with_auth_identity(
+                        self.auth_identity.clone().map(|c| c.auth_identity()).flatten(),
+                        ntlm_config,
+                    ));
                 }
                 result => return result,
             };
@@ -457,14 +467,14 @@ impl SspiImpl for Negotiate {
                 let mut transformed_builder = builder.full_transform(Some(&mut credentials_handle));
 
                 pku2u.initialize_security_context_impl(&mut transformed_builder)
-            },
+            }
             NegotiatedProtocol::Kerberos(kerberos) => kerberos.initialize_security_context_impl(builder),
             NegotiatedProtocol::Ntlm(ntlm) => {
                 let mut credentials_handle = self.auth_identity.as_mut().map(|c| c.clone().auth_identity()).flatten();
                 let mut transformed_builder = builder.full_transform(Some(&mut credentials_handle));
 
                 ntlm.initialize_security_context_impl(&mut transformed_builder)
-            },
+            }
         }
     }
 
@@ -482,7 +492,7 @@ impl SspiImpl for Negotiate {
                 };
                 let new_builder = builder.full_transform(pku2u, Some(&mut creds_handle));
                 new_builder.execute()
-            },
+            }
             NegotiatedProtocol::Kerberos(kerberos) => kerberos.accept_security_context_impl(builder),
             NegotiatedProtocol::Ntlm(ntlm) => {
                 let mut creds_handle = if let Some(creds_handle) = &builder.credentials_handle {
@@ -492,7 +502,7 @@ impl SspiImpl for Negotiate {
                 };
                 let new_builder = builder.full_transform(ntlm, Some(&mut creds_handle));
                 new_builder.execute()
-            },
+            }
         }
     }
 }
