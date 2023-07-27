@@ -438,6 +438,7 @@ pub unsafe fn unpack_sec_winnt_auth_identity_ex2_w(p_auth_data: *const c_void) -
     }
 
     // only marshaled smart card creds starts with '@' char
+    #[cfg(feature = "scard")]
     if username[0] == b'@' {
         let mut cred_type = 0;
         let mut credential = null_mut();

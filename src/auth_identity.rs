@@ -78,7 +78,6 @@ impl From<AuthIdentityBuffers> for AuthIdentity {
 }
 
 /// Represents raw data needed for smart card authentication
-#[cfg(feature = "scard")]
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct SmartCardIdentityBuffers {
     /// UTF-16 encoded username
@@ -182,6 +181,7 @@ impl Credentials {
     }
 }
 
+#[cfg(feature = "scard")]
 impl From<SmartCardIdentity> for Credentials {
     fn from(value: SmartCardIdentity) -> Self {
         Self::SmartCard(value)
@@ -200,6 +200,7 @@ impl TryFrom<Credentials> for CredentialsBuffers {
     fn try_from(value: Credentials) -> Result<Self, Self::Error> {
         Ok(match value {
             Credentials::AuthIdentity(identity) => Self::AuthIdentity(identity.into()),
+            #[cfg(feature = "scard")]
             Credentials::SmartCard(identity) => Self::SmartCard(identity.try_into()?),
         })
     }

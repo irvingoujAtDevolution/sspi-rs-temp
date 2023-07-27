@@ -89,6 +89,7 @@ mod smartcard;
 #[cfg(windows)]
 pub mod winapi;
 
+#[allow(unreachable_patterns)]
 mod auth_identity;
 mod ber;
 mod crypto;
