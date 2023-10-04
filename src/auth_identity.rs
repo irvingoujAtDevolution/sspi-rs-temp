@@ -39,13 +39,14 @@ impl AuthIdentityBuffers {
 
 impl fmt::Debug for AuthIdentityBuffers {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "AuthIdentityBuffers {{ user: 0x")?;
-        self.user.iter().try_for_each(|byte| write!(f, "{byte:02X}"))?;
-        write!(f, ", domain: 0x")?;
-        self.domain.iter().try_for_each(|byte| write!(f, "{byte:02X}"))?;
-        write!(f, ", password: {:?} }}", self.password)?;
+        let user_str = String::from_utf8_lossy(&self.user);
+        let domain_str = String::from_utf8_lossy(&self.domain);
 
-        Ok(())
+        write!(
+            f,
+            "AuthIdentityBuffers {{ user: {}, domain: {}, password: {:?} }}",
+            user_str, domain_str, &self.password
+        )
     }
 }
 

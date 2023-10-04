@@ -9,6 +9,7 @@ mod utils;
 use std::fmt::Debug;
 use std::io::Write;
 
+use base64::Engine;
 pub use encryption_params::EncryptionParams;
 use lazy_static::lazy_static;
 use picky_asn1::restricted_string::IA5String;
@@ -44,7 +45,8 @@ use crate::builders::ChangePassword;
 use crate::generator::{GeneratorChangePassword, GeneratorInitSecurityContext, NetworkRequest, YieldPointLocal};
 use crate::kerberos::client::extractors::{extract_salt_from_krb_error, extract_status_code_from_krb_priv_response};
 use crate::kerberos::client::generators::{
-    generate_authenticator, generate_final_neg_token_targ, get_mech_list, GenerateTgsReqOptions,
+    generate_authenticator, generate_final_neg_token_targ, get_mech_list, irving_generate_neg_ap_req,
+    GenerateTgsReqOptions,
 };
 use crate::kerberos::pa_datas::AsRepSessionKeyExtractor;
 use crate::kerberos::server::extractors::{extract_ap_rep_from_neg_token_targ, extract_sub_session_key_from_ap_rep};
@@ -910,6 +912,299 @@ impl<'a> Kerberos {
                 let encoded_neg_ap_req = picky_asn1_der::to_vec(&generate_neg_ap_req(ap_req, mech_id)?)?;
 
                 let output_token = SecurityBuffer::find_buffer_mut(builder.output, SecurityBufferType::Token)?;
+                output_token.buffer.write_all(&encoded_neg_ap_req)?;
+
+                self.state = KerberosState::ApExchange;
+
+                SecurityStatus::ContinueNeeded
+            }
+            KerberosState::ApExchange => {
+                let input = builder
+                    .input
+                    .as_ref()
+                    .ok_or_else(|| Error::new(ErrorKind::InvalidToken, "Input buffers must be specified"))?;
+                let input_token = SecurityBuffer::find_buffer(input, SecurityBufferType::Token)?;
+
+                let neg_token_targ: NegTokenTarg1 = picky_asn1_der::from_bytes(&input_token.buffer)?;
+
+                let ap_rep = extract_ap_rep_from_neg_token_targ(&neg_token_targ)?;
+
+                let sub_session_key = extract_sub_session_key_from_ap_rep(
+                    &ap_rep,
+                    self.encryption_params.session_key.as_ref().unwrap(),
+                    &self.encryption_params,
+                )?;
+
+                self.encryption_params.sub_session_key = Some(sub_session_key);
+
+                if let Some(ref token) = neg_token_targ.0.mech_list_mic.0 {
+                    validate_mic_token(&token.0 .0, ACCEPTOR_SIGN, &self.encryption_params)?;
+                }
+
+                let neg_token_targ = generate_final_neg_token_targ(Some(generate_initiator_raw(
+                    picky_asn1_der::to_vec(&get_mech_list())?,
+                    self.seq_number as u64,
+                    self.encryption_params.sub_session_key.as_ref().unwrap(),
+                )?));
+
+                let encoded_final_neg_token_targ = picky_asn1_der::to_vec(&neg_token_targ)?;
+
+                let output_token = SecurityBuffer::find_buffer_mut(builder.output, SecurityBufferType::Token)?;
+                output_token.buffer.write_all(&encoded_final_neg_token_targ)?;
+
+                self.state = KerberosState::PubKeyAuth;
+
+                SecurityStatus::Ok
+            }
+            _ => {
+                return Err(Error::new(
+                    ErrorKind::OutOfSequence,
+                    format!("Got wrong Kerberos state: {:?}", self.state),
+                ))
+            }
+        };
+
+        trace!(output_buffers = ?builder.output);
+
+        Ok(InitializeSecurityContextResult {
+            status,
+            flags: ClientResponseFlags::empty(),
+            expiry: None,
+        })
+    }
+}
+
+impl Kerberos {
+    pub fn irving_initialize_security_context_impl_gen<'a>(
+        &'a mut self,
+        builder: &'a mut crate::builders::FilledInitializeSecurityContext<<Self as SspiImpl>::CredentialsHandle>,
+    ) -> GeneratorInitSecurityContext {
+        GeneratorInitSecurityContext::new(move |mut yield_point| async move {
+            self.irving_initialize_security_context_impl(&mut yield_point, builder)
+                .await
+        })
+    }
+
+    pub async fn irving_initialize_security_context_impl<'a>(
+        &'a mut self,
+        yield_point: &mut YieldPointLocal,
+        builder: &'a mut crate::builders::FilledInitializeSecurityContext<'_, <Self as SspiImpl>::CredentialsHandle>,
+    ) -> Result<crate::InitializeSecurityContextResult> {
+        trace!(?builder);
+
+        let status = match self.state {
+            KerberosState::Negotiate => {
+                // let (service_name, _service_principal_name) =
+                //     parse_target_name(builder.target_name.ok_or_else(|| {
+                //         Error::new(
+                //             ErrorKind::NoCredentials,
+                //             "Service target name (service principal name) is not provided",
+                //         )
+                //     })?)?;
+
+                // let (username, service_name) = match check_if_empty!(
+                //     builder.credentials_handle.as_ref().unwrap().as_ref(),
+                //     "AuthIdentity is not provided"
+                // ) {
+                //     CredentialsBuffers::AuthIdentity(auth_identity) => {
+                //         let username = utf16_bytes_to_utf8_string(&auth_identity.user);
+                //         let domain = utf16_bytes_to_utf8_string(&auth_identity.domain);
+
+                //         (format!("{}.{}", username, domain.to_ascii_lowercase()), service_name)
+                //     }
+                //     #[cfg(feature = "scard")]
+                //     CredentialsBuffers::SmartCard(_) => (_service_principal_name.into(), service_name),
+                // };
+                // debug!(username, service_name);
+
+                // let encoded_neg_token_init =
+                // picky_asn1_der::to_vec(&generate_neg_token_init(&username, service_name)?)?;
+
+                // let output_token = SecurityBuffer::find_buffer_mut(builder.output, SecurityBufferType::Token)?;
+                // output_token.buffer.write_all(&encoded_neg_token_init)?;
+
+                self.state = KerberosState::Preauthentication;
+
+                SecurityStatus::ContinueNeeded
+            }
+            KerberosState::Preauthentication => {
+                // let input = builder
+                //     .input
+                //     .as_ref()
+                //     .ok_or_else(|| crate::Error::new(ErrorKind::InvalidToken, "Input buffers must be specified"))?;
+
+                // if let Ok(sec_buffer) =
+                //     SecurityBuffer::find_buffer(builder.input.as_ref().unwrap(), SecurityBufferType::ChannelBindings)
+                // {
+                //     self.channel_bindings = Some(ChannelBindings::from_bytes(&sec_buffer.buffer)?);
+                // }
+
+                // let input_token = SecurityBuffer::find_buffer(input, SecurityBufferType::Token)?;
+
+                // let tgt_ticket = extract_tgt_ticket(&input_token.buffer)?;
+
+                let credentials = builder
+                    .credentials_handle
+                    .as_ref()
+                    .unwrap()
+                    .as_ref()
+                    .ok_or_else(|| Error::new(ErrorKind::WrongCredentialHandle, "No credentials provided"))?;
+
+                let (username, password, realm, cname_type) = match credentials {
+                    CredentialsBuffers::AuthIdentity(auth_identity) => {
+                        let username = utf16_bytes_to_utf8_string(&auth_identity.user);
+                        let domain = utf16_bytes_to_utf8_string(&auth_identity.domain);
+                        let password = utf16_bytes_to_utf8_string(auth_identity.password.as_ref());
+
+                        let realm = get_client_principal_realm(&username, &domain);
+                        let cname_type = get_client_principal_name_type(&username, &domain);
+
+                        (username, password, realm, cname_type)
+                    }
+                };
+                self.realm = Some(realm.clone());
+
+                let options = GenerateAsReqOptions {
+                    realm: &realm,
+                    username: &username,
+                    cname_type,
+                    snames: &[TGT_SERVICE_NAME, &realm],
+                    // 4 = size of u32
+                    nonce: &OsRng.gen::<[u8; 4]>(),
+                    hostname: &unwrap_hostname(self.config.hostname.as_deref())?,
+                    context_requirements: builder.context_requirements,
+                };
+                let kdc_req_body = generate_as_req_kdc_body(&options)?;
+
+                let pa_data_options = match credentials {
+                    CredentialsBuffers::AuthIdentity(auth_identity) => {
+                        let domain = utf16_bytes_to_utf8_string(&auth_identity.domain);
+                        let salt = format!("{}{}", domain, username);
+
+                        AsReqPaDataOptions::AuthIdentity(GenerateAsPaDataOptions {
+                            password: &password,
+                            salt: salt.as_bytes().to_vec(),
+                            enc_params: self.encryption_params.clone(),
+                            with_pre_auth: false,
+                        })
+                    }
+                };
+
+                let as_rep = self.as_exchange(yield_point, &kdc_req_body, pa_data_options).await?;
+
+                info!("AS exchange finished successfully.");
+
+                self.realm = Some(as_rep.0.crealm.0.to_string());
+
+                let (encryption_type, salt) = extract_encryption_params_from_as_rep(&as_rep)?;
+
+                let encryption_type = CipherSuite::try_from(encryption_type as usize)?;
+
+                self.encryption_params.encryption_type = Some(encryption_type);
+
+                let mut authenticator = generate_authenticator(GenerateAuthenticatorOptions {
+                    kdc_rep: &as_rep.0,
+                    seq_num: Some(OsRng.gen::<u32>()),
+                    sub_key: None,
+                    checksum: None,
+                    channel_bindings: self.channel_bindings.as_ref(),
+                    extensions: Vec::new(),
+                })?;
+
+                let mut session_key_extractor = match credentials {
+                    CredentialsBuffers::AuthIdentity(_) => AsRepSessionKeyExtractor::AuthIdentity {
+                        salt: &salt,
+                        password: &password,
+                        enc_params: &mut self.encryption_params,
+                    },
+                };
+                let session_key_1 = session_key_extractor.session_key(&as_rep)?;
+
+                let service_principal = builder.target_name.ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::NoCredentials,
+                        "Service target name (service principal name) is not provided",
+                    )
+                })?;
+
+                let tgs_req: picky_asn1_der::application_tag::ApplicationTag<picky_krb::messages::KdcReq, 12> =
+                    generate_tgs_req(GenerateTgsReqOptions {
+                        realm: &as_rep.0.crealm.0.to_string(),
+                        service_principal,
+                        session_key: &session_key_1,
+                        ticket: as_rep.0.ticket.0,
+                        authenticator: &mut authenticator,
+                        additional_tickets: None.map(|ticket| vec![ticket]),
+                        enc_params: &self.encryption_params,
+                        context_requirements: builder.context_requirements,
+                    })?;
+
+                let response = self.send(yield_point, &serialize_message(&tgs_req)?).await?;
+
+                // first 4 bytes are message len. skipping them
+                let mut d = picky_asn1_der::Deserializer::new_from_bytes(&response[4..]);
+                let tgs_rep: KrbResult<TgsRep> = KrbResult::deserialize(&mut d)?;
+                let tgs_rep = tgs_rep?;
+
+                info!("TGS exchange finished successfully");
+
+                let session_key_2 =
+                    extract_session_key_from_tgs_rep(&tgs_rep, &session_key_1, &self.encryption_params)?;
+
+                self.encryption_params.session_key = Some(session_key_2);
+
+                let seq_num = self.next_seq_number();
+
+                let enc_type = self
+                    .encryption_params
+                    .encryption_type
+                    .as_ref()
+                    .unwrap_or(&DEFAULT_ENCRYPTION_TYPE);
+                let authenticator_sub_key = generate_random_symmetric_key(enc_type, &mut OsRng);
+
+                let authenticator_options = GenerateAuthenticatorOptions {
+                    kdc_rep: &tgs_rep.0,
+                    seq_num: Some(seq_num),
+                    sub_key: Some(EncKey {
+                        key_type: enc_type.clone(),
+                        key_value: authenticator_sub_key,
+                    }),
+                    checksum: Some(ChecksumOptions {
+                        checksum_type: AUTHENTICATOR_CHECKSUM_TYPE.to_vec(),
+                        checksum_value: AUTHENTICATOR_DEFAULT_CHECKSUM.to_vec(),
+                    }),
+                    channel_bindings: self.channel_bindings.as_ref(),
+                    extensions: Vec::new(),
+                };
+
+                let authenticator = generate_authenticator(authenticator_options)?;
+                let encoded_auth = picky_asn1_der::to_vec(&authenticator)?;
+                info!(encoded_ap_req_authenticator = ?encoded_auth);
+
+                // FIXME: properly negotiate mech id - Windows always does KRB5 U2U
+                // not always!
+                let mech_id = oids::krb5();
+
+                let context_requirements = builder.context_requirements;
+                // debug!("irving: context requirement is {:?}", &context_requirements);
+
+                // if mech_id == oids::krb5_user_to_user() {
+                //     // KRB5 U2U always needs the use-session-key flag
+                //     context_requirements.set(ClientRequestFlags::USE_SESSION_KEY, true);
+                // }
+
+                let ap_req = generate_ap_req(
+                    tgs_rep.0.ticket.0,
+                    self.encryption_params.session_key.as_ref().unwrap(),
+                    &authenticator,
+                    &self.encryption_params,
+                    context_requirements.into(),
+                )?;
+
+                let generated_neg_ap_req = irving_generate_neg_ap_req(ap_req, mech_id)?;
+                let encoded_neg_ap_req = picky_asn1_der::to_vec(&generated_neg_ap_req)?;
+                let output_token = SecurityBuffer::find_buffer_mut(builder.output, SecurityBufferType::Token)?;
+                // the out put token is already a certificate instead of a contentInfo here, need to figure out why
                 output_token.buffer.write_all(&encoded_neg_ap_req)?;
 
                 self.state = KerberosState::ApExchange;

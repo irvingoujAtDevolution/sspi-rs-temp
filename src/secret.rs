@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, Debug};
 
 use picky::key::PrivateKey;
 use serde::{Deserialize, Serialize};
@@ -58,8 +58,7 @@ impl SecretPrivateKey {
 
 impl fmt::Debug for SecretPrivateKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "SecretPrivateKey")?;
-
+        write!(f, "{:?}", &self.0)?;
         Ok(())
     }
 }

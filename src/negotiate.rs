@@ -500,6 +500,7 @@ impl<'a> Negotiate {
         yield_point: &mut YieldPointLocal,
         builder: &'a mut builders::FilledInitializeSecurityContext<'_, <Self as SspiImpl>::CredentialsHandle>,
     ) -> Result<InitializeSecurityContextResult> {
+        error!("self = {:?}, builder = {:?}", &self, &builder);
         if let Some(target_name) = &builder.target_name {
             self.check_target_name_for_ntlm_downgrade(target_name);
         }
